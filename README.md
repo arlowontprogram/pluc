@@ -1,47 +1,13 @@
-![CI](https://github.com/philanc/plc/workflows/CI/badge.svg)
+## PLUC - Pure LuaU Crypto
 
-## PLC - Pure Lua Crypto
+A small collection of crpytographic functions, and related utilities, implemented in LuaU, forked from PLC on [GitHub](https://github.com/philanc/plc/tree/master)
 
-A small collection of crpytographic functions, and related utilities, 
-implemented  in pure Lua  (version 5.3 or above)
+This `README` has been heavily watered down, I recommend you read the original PLC [`README`](https://github.com/philanc/plc/tree/master#readme) as it has a LOT more information. 
 
 ### Recent changes
 
-May 2023
-
-* Added *Ascon-128*. Ascon offers authenticated encryption with associated data (AEAD), hash, XOF, MAC and PRF. Ascon has won the NIST Lightweight Cryptography competition (2023) and the CAESAR competition (2019) for lightweight authenticated encryption.
-
-December 2018
-
-* Added *XChaCha20* encryption (in plc/chacha20.lua)
-
-October 2018
-
-* Added SHA2-512 and optimized SHA2-256. Borrowed the core permutation code from the very nice pure_lua_SHA2 project by Egor Skriptunoff - https://github.com/Egor-Skriptunoff/pure_lua_SHA2
-
-April 2018
-
-* Added *Morus*, a finalist (round 4) in the CAESAR competition for authenticated encryption.
-
-* Adding *Gimli*, cryptographic functions based on the Gimli permutation (Dan Bernstein et al., 2017, https://gimli.cr.yp.to/). *Work in progress - at the moment, only the core permutation has been implemented.*
-
-* Added *Base85*, including the ZeroMQ variant of Ascii85 encoding.
-
-December 2017
-
-* Added *SipHash*, a very fast pseudorandom function (or keyed hash) 
-optimized for speed on short messages. It can be used as a MAC and has
-been extensively used as a robust string hash function, as a defense 
-against hash-flooding DoS attacks.
-
-August 2017
-
-* Added *Salsa20* and the NaCl *box() / secret_box()* API, contributed 
-by Pierre Chapuis - https://github.com/catwell
-
-June 2017
-
-* Added *MD5*.
+November 2023
+Initial Project Creation
 
 ### Objective
 
@@ -49,9 +15,8 @@ Collect in one place standalone implementation of well-known, and/or useful,  an
 
 Users should be able to pickup any file and just drop it in their project:
 
-* All the files are written in pure Lua, version 5.3 and above (tested on 5.3.4). Lua 5.3 is required since bit operators and string pack/unpack are extensively used.
-
-* The files should not require any third-party library or C extension beyond the standard Lua 5.3 library. 
+* Original file were written in pure Lua, verion 5.3 and above (since bit operators, string pack/unpack are extensively used)
+* Rewritten to work with LuaU
 
 * The files should not define any global. When required, they should just return a table with the algorithm's functions and constants.
 
@@ -60,8 +25,6 @@ Contributions, fixes, bug reports and suggestions are welcome.
 What this collection is *not*:
 
 * a complete, structured cryptographic library - no promise is made about consistent API structure and documentation. This is not a library - just a collection of hopefully useful snippets of crypto source code. 
-
-* high performance, heavy-duty cryptographic implementations -- after all, this is *pure* Lua...  :-)
 
 *  memory-efficient implementations (see above)
 
@@ -109,59 +72,6 @@ Some (un)related utilities:
 
 * Base64, Base58, Base85 (Z85, the ZeroMQ variant of Ascii85)  and Hex encoding/decoding.
 
-### In the future...
-
-Implementations that may come some day:
-
-* Ed25519 signature 
-
-* better documentation in each file :-)
-
-### Performance
-
-These crude numbers give an idea of the relative performance of the algorithms. 
-They correspond to the encryption or the hash of a 10 MB string (10 * 1024 * 1024 bytes). 
-
-They have been collected on a laptop with Linux x86_64,  CPU i5 M430 @ 2.27 GHz. Lua version is 5.3.4 (ELF 64 bits) - see file 'test_perf.lua'; uncomment whatever test you want to run at the end. 
-
-```
-Plain text size: 10 MBytes. Elapsed time in seconds
-
-Encryption
-	- rc4 raw                 7.4  
-	- rabbit                  4.7  
-	- xtea ctr               11.0  
-	- chacha20                7.9  
-	- salsa20                 8.0  
-	- norx aead               4.5  
-	- norx32 aead             9.2  
-	- morus aead              1.7
-
-Hash
-	- md5                     3.7  
-	- sha2-256                9.1  
-	- sha2-512                6.4  
-	- sha3-256               23.2  
-	- sha3-512               43.0  
-	- blake2b-512             9.4  
-	- blake2b-256             9.3  
-	- poly1305 hmac           1.2  
-
-	- adler-32                1.3  
-	- crc-32                  1.8  
-
-Elliptic curve (ec25519)
-	- scalarmult (100 times) 18.9
-
-```
-
-### Test vectors, tests, and disclaimer
-
-Some simplistic tests can be run (test_all.lua). Individual test files are provided in the 'test' directory. 
-
-The implementations should pass the tests, but beyond that, there is no guarantee that these implementations conform to anything  :-)  -- Use at your own risk!
-
-
 ### License and credits
 
 All the files included here are distributed under the MIT License (see file LICENSE)
@@ -169,8 +79,3 @@ All the files included here are distributed under the MIT License (see file LICE
 The salsa20 and box/secretbox implementations are contributed by Pierre Chapuis - https://github.com/catwell
 
 The sha2-256 and sha2-512 core permutation has been borrowed from Egor Skriptunoff's pure_lua_SHA2 project - https://github.com/Egor-Skriptunoff/pure_lua_SHA2
-
-
-
-
-
