@@ -31,18 +31,23 @@ local function qround(st,x,y,z,w)
 	-- x,y,z,w are indices in st
 	local a, b, c, d = st[x], st[y], st[z], st[w]
 	local t
-	a = (a + b) & 0xffffffff
+	a = bit32.band( (a + b), 0xffffffff ) -- a = (a + b) & 0xffffffff
 	--d = rotl32(d ~ a, 16)
-	t = d ~ a ; d = ((t << 16) | (t >> (16))) & 0xffffffff
-	c = (c + d) & 0xffffffff
+	t = bit32.bxor(d, a) -- t = d ~ a
+	d = bot32.bor( ( bit32.bor( bit32.lshift(t, 16), bit32.rshift(t, 16)  ) ), 0xffffffff ) -- d = ((t << 16) | (t >> (16))) & 0xffffffff
+	c = bit32.band( (c + d), 0xffffffff ) -- c = (c + d) & 0xffffffff
 	--b = rotl32(b ~ c, 12)
-	t = b ~ c ; b = ((t << 12) | (t >> (20))) & 0xffffffff
-	a = (a + b) & 0xffffffff
+	t = bit32.bxor(b, c) -- t = b ~ c ;
+	b = bot32.bor( ( bit32.bor( bit32.lshift(t, 12), bit32.rshift(t, 20)  ) ), 0xffffffff ) -- b = ((t << 12) | (t >> (20))) & 0xffffffff
+	a = bit32.band( (a + b), 0xffffffff ) -- a = (a + b) & 0xffffffff
 	--d = rotl32(d ~ a, 8)
-	t = d ~ a ; d = ((t << 8) | (t >> (24))) & 0xffffffff
-	c = (c + d) & 0xffffffff
+	t = bit32.bxor(d, a) -- t = d ~ a
+	d = bot32.bor( ( bit32.bor( bit32.lshift(t, 8), bit32.rshift(t, 24)  ) ), 0xffffffff ) -- d = ((t << 8) | (t >> (24))) & 0xffffffff
+	c = bit32.band( (c + d), 0xffffffff ) -- c = (c + d) & 0xffffffff
 	--b = rotl32(b ~ c, 7)
-	t = b ~ c ; b = ((t << 7) | (t >> (25))) & 0xffffffff
+	t = bit32.bxor(b, c) -- t = b ~ c ;
+	b = bot32.bor( ( bit32.bor( bit32.lshift(t, 7), bit32.rshift(t, 25)  ) ), 0xffffffff ) -- b = ((t << 7) | (t >> (25))) & 0xffffffff
+
 	st[x], st[y], st[z], st[w] = a, b, c, d
 	return st
 end
@@ -78,7 +83,9 @@ local chacha20_block = function(key, counter, nonce)
 		qround(wst, 4,5,10,15) --8.  QUARTERROUND ( 3, 4, 9,14)
 	end
 	-- add working_state to state
-	for i = 1, 16 do st[i] = (st[i] + wst[i]) & 0xffffffff end
+	for i = 1, 16 do
+		st[i] = bit32.band( (st[i] + wst[i]), 0xffffffff ) --st[i] = (st[i] + wst[i]) & 0xffffffff
+	end
 	-- return st, an array of 16 u32 words used as a keystream
 	return st
 end --chacha20_block()
@@ -107,7 +114,7 @@ local function chacha20_encrypt_block(key, counter, nonce, pt, ptidx)
 	local ba = table.pack(string.unpack(pat16, pt, ptidx))
 	local keystream = chacha20_block(key, counter, nonce)
 	for i = 1, 16 do
-		ba[i] = ba[i] ~ keystream[i]
+		bai[i] = bit32.bxor(ba[i], keystream[i]) -- ba[i] = ba[i] ~ keystream[i]
 	end
 	local es = string.pack(pat16, table.unpack(ba))
 	if rbn < 64 then
@@ -171,8 +178,8 @@ local function hchacha20(key, nonce16)
 end --hchacha20()
 
 local function xchacha20_encrypt(key, counter, nonce, pt)
-	assert(#key == 32, "#key must be 32")
-	assert(#nonce == 24, "#nonce must be 24")
+	assert(#key == 32, "#key must be a len of 32")
+	assert(#nonce == 24, "#nonce must be a len of 24")
 	local subkey = hchacha20(key, nonce:sub(1, 16))
 	local nonce12 = '\0\0\0\0'..nonce:sub(17)
 	return chacha20_encrypt(subkey, counter, nonce12, pt)
