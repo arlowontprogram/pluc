@@ -114,7 +114,7 @@ local function chacha20_encrypt_block(key, counter, nonce, pt, ptidx)
 	local ba = table.pack(string.unpack(pat16, pt, ptidx))
 	local keystream = chacha20_block(key, counter, nonce)
 	for i = 1, 16 do
-		bai[i] = bit32.bxor(ba[i], keystream[i]) -- ba[i] = ba[i] ~ keystream[i]
+		bai[i] = bit32.bxor(ba[i], keystream[i]) -- ba[i] = ba[i] ~ keystream[i]s
 	end
 	local es = string.pack(pat16, table.unpack(ba))
 	if rbn < 64 then

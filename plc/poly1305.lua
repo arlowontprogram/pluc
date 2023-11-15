@@ -60,29 +60,35 @@ See also:
 -----------------------------------------------------------
 -- poly1305
 
-local sunp = string.unpack
+local strunp = string.unpack
 
 local function poly_init(k)
 	-- k: 32-byte key as a string
 	-- initialize internal state
 	local st = {
 		r = {
-			(sunp('<I4', k,  1)     ) & 0x3ffffff,  --r0
-			(sunp('<I4', k,  4) >> 2) & 0x3ffff03,  --r1
-			(sunp('<I4', k,  7) >> 4) & 0x3ffc0ff,  --r2
-			(sunp('<I4', k, 10) >> 6) & 0x3f03fff,  --r3
-			(sunp('<I4', k, 13) >> 8) & 0x00fffff,  --r4
+			--(strunp('<I4', k,  1)     ) & 0x3ffffff,  --r0
+			bit32.band(strunp('<I4', k,  1), 0x3ffff03)
+			-- (strunp('<I4', k,  4) >> 2) & 0x3ffff03,  --r1
+			bit32.band((bit32.rshift(strunp('<I4', k,  4), 2), 0x3ffff03)
+			--(strunp('<I4', k,  7) >> 4) & 0x3ffc0ff,  --r2
+			bit32.band((bit32.rshift(strunp('<I4', k,  7), 4)), 0x3ffc0ff)
+			--(strunp('<I4', k, 10) >> 6) & 0x3f03fff,  --r3
+			bit32.band((bit32.rshift(strunp('<I4', k, 10), 6)), 0x3f03fff)
+			--(strunp('<I4', k, 13) >> 8) & 0x00fffff,  --r4
+			bit32.band((bit32.rshift(strunp('<I4', k, 13) >> 8), 8)), 0x00fffff)
 		},
 		h = { 0,0,0,0,0 },
-		pad = {	sunp('<I4', k, 17),  -- 's' in rfc
-			sunp('<I4', k, 21),
-			sunp('<I4', k, 25),
-			sunp('<I4', k, 29),
+		pad = {	
+			strunp('<I4', k, 17),  -- 's' in rfc
+			strunp('<I4', k, 21),
+			strunp('<I4', k, 25),
+			strunp('<I4', k, 29),
 		},
-		buffer = "", --
+		buffer = "",
 		leftover = 0,
 		final = false,
-	}--st
+	} --st
 	return st
 end --poly_init()
 
@@ -108,13 +114,19 @@ local function poly_blocks(st, m)
 	local h4 = st.h[5]
 	local d0, d1, d2, d3, d4, c
 	--
+	local mask = 0x3ffffff
 	while bytes >= 16 do  -- 16 = poly1305_block_size
 		-- h += m[i]  (in rfc:  a += n with 0x01 byte)
-		h0 = h0 + ((sunp('<I4', m, midx     )     ) & 0x3ffffff)
-		h1 = h1 + ((sunp('<I4', m, midx +  3) >> 2) & 0x3ffffff)
-		h2 = h2 + ((sunp('<I4', m, midx +  6) >> 4) & 0x3ffffff)
-		h3 = h3 + ((sunp('<I4', m, midx +  9) >> 6) & 0x3ffffff)
-		h4 = h4 + ((sunp('<I4', m, midx + 12) >> 8) | hibit)--0x01 byte
+		--h0 += ((strunp('<I4', m, midx     )     ) & 0x3ffffff)
+		h0 += (bit32.band(string.unpack('<I4', m, midx), mask))
+		--h1 += ((strunp('<I4', m, midx +  3) >> 2) & 0x3ffffff)
+		h1 += (bit32.band(bit32.rshift(string.unpack('<I4', m, midx + 3), 2), mask))
+		--h2 += ((strunp('<I4', m, midx +  6) >> 4) & 0x3ffffff)
+		h2 += (bit32.band(bit32.rshift(string.unpack('<I4', m, midx + 6), 4), mask))
+		--h3 += ((strunp('<I4', m, midx +  9) >> 6) & 0x3ffffff)
+		h3 += (bit32.band(bit32.rshift(string.unpack('<I4', m, midx + 9), 6), mask))
+		--h4 += ((strunp('<I4', m, midx + 12) >> 8) | hibit) --0x01 byte
+		h4 += bit32.bor(bit32.rshift(string.unpack('<I4', m, midx + 12), 8), hibit)
 		--
 		-- h *= r % p (partial)
 		d0 = h0*r0 + h1*s4 + h2*s3 + h3*s2 + h4*s1
@@ -123,13 +135,31 @@ local function poly_blocks(st, m)
 		d3 = h0*r3 + h1*r2 + h2*r1 + h3*r0 + h4*s4
 		d4 = h0*r4 + h1*r3 + h2*r2 + h3*r1 + h4*r0
 		--
-		              c = (d0>>26) & 0xffffffff ; h0 = d0 & 0x3ffffff
-		d1 = d1 + c ; c = (d1>>26) & 0xffffffff ; h1 = d1 & 0x3ffffff
-		d2 = d2 + c ; c = (d2>>26) & 0xffffffff ; h2 = d2 & 0x3ffffff
-		d3 = d3 + c ; c = (d3>>26) & 0xffffffff ; h3 = d3 & 0x3ffffff
-		d4 = d4 + c ; c = (d4>>26) & 0xffffffff ; h4 = d4 & 0x3ffffff
-		h0 = h0 + (c*5) ; c = h0>>26 ; h0 = h0 & 0x3ffffff
-		h1 = h1 + c
+		--c = (d0>>26) & 0xffffffff ; h0 = d0 & 0x3ffffff
+		c = bit32.band(bit32.rshift(d0, 26), 0xffffffff)
+		h0 = bit32.band(d0, mask)
+		
+		--d1 += c ; c = (d1>>26) & 0xffffffff ; h1 = d1 & 0x3ffffff
+		d1 += c ; c = bit32.band(bit32.rshift(d1, 26), 0xffffffff)
+		h1 = bit32.band(d1, mask)
+
+		--d2 += c ; c = (d2>>26) & 0xffffffff ; h2 = d2 & 0x3ffffff
+		d2 += c ; c = bit32.band(bit32.rshift(d2, 26), 0xffffffff)
+		h2 = bit32.band(d2, mask)
+
+		--d3 += c ; c = (d3>>26) & 0xffffffff ; h3 = d3 & 0x3ffffff
+		d3 += c; c = bit32.band(bit32.rshift(d3, 26), 0xffffffff)
+		h3 = bit32.band(d3, mask)
+
+		--d4 += c ; c = (d4>>26) & 0xffffffff ; h4 = d4 & 0x3ffffff
+		d4 += c ; c = bit32.band(bit32.rshift(d4, 26), 0xffffffff)
+		h4 = bit32.band(d4, 0x3ffffff)
+
+		--h0 += (c*5) ; c = h0>>26 ; h0 = h0 & 0x3ffffff
+		h0 += (c*5) ; c = bit32.rshift(h0, 26)
+		h0 = bit32.band(h0, 0x3ffffff)
+
+		h1 += c
 		--
 		midx = midx + 16 -- 16 = poly1305_block_size
 		bytes = bytes - 16
@@ -251,4 +281,4 @@ return {
 	finish = poly_finish,
 	auth = poly_auth,
 	verify = poly_verify,
-	}
+}
