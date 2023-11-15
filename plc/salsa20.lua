@@ -17,19 +17,20 @@ local function qround(st,x,y,z,w)
 	-- st is a salsa state: an array of 16 u32 words
 	-- x,y,z,w are indices in st
 	local a, b, c, d = st[x], st[y], st[z], st[w]
-	local t
-	t = (a + d) & 0xffffffff
+	local t = bit32.band((a + d), 0xffffffff)
+	b = bit32.bxor(b, bit32.band(bit32.lshift(t, 7) | bit32.rshift(t, 25), 0xffffffff))
 	-- b = b ~ rotl32(t, 7)
-	b = b ~ ((t << 7) | (t >> 25)) & 0xffffffff
-	t = (b + a) & 0xffffffff
+	t = bit32.band(b+a, 0xffffffff)
+	c = bit32.bxor(c, bit32.band(bit32.lshift(t, 9) | bit32.rshift(t, 23), 0xffffffff))
 	-- c = c ~ rotl32(t, 9)
-	c = c ~ ((t << 9) | (t >> 23)) & 0xffffffff
-	t = (c + b) & 0xffffffff
+	t = bit32.band(c+b, 0xffffffff)
+	d = bit32.bxor(d, bit32.band(bit32.lshift(t, 13) | bit32.rshift(t, 19), 0xffffffff))
 	-- d = d ~ rotl32(t, 13)
-	d = d ~ ((t << 13) | (t >> 19)) & 0xffffffff
-	t = (d + c) & 0xffffffff
+	t = bit32.band(d+c, 0xffffffff)
+	a = bit32.bxor(a, bit32.band(bit32.lshift(t, 18) | bit32.rshift(t, 14), 0xffffffff))
 	-- a = a ~ rotl32(t, 18)
-	a = a ~ ((t << 18) | (t >> 14)) & 0xffffffff
+	t = bit32.band(a+d, 0xffffffff)
+
 	st[x], st[y], st[z], st[w] = a, b, c, d
 	return st
 end
@@ -75,14 +76,14 @@ end --salsa20_block()
 local function hsalsa20_block(key, counter, nonce)
 	local st = salsa20_block(key, counter, nonce)
 	return {
-		(st[1] - 0x61707865) & 0xffffffff,
-		(st[6] - 0x3320646e) & 0xffffffff,
-		(st[11] - 0x79622d32) & 0xffffffff,
-		(st[16] - 0x6b206574) & 0xffffffff,
-		(st[7] - nonce[1]) & 0xffffffff,
-		(st[8] - nonce[2]) & 0xffffffff,
-		(st[9] - counter[1]) & 0xffffffff,
-		(st[10] - counter[2]) & 0xffffffff,
+		bit32.band(st[1] - 0x61707865, 0xffffffff),
+		bit32.band(st[6] - 0x3320646e, 0xffffffff),
+		bit32.band(st[11] - 0x79622d32, 0xffffffff),
+		bit32.band(st[16] - 0x6b206574, 0xffffffff),
+		bit32.band(st[7] - nonce[1], 0xffffffff),
+		bit32.band(st[8] - nonce[2], 0xffffffff),
+		bit32.band(st[9] - counter[1], 0xffffffff),
+		bit32.band(st[10] - counter[2], 0xffffffff),
 	}
 end
 
@@ -113,7 +114,7 @@ local function salsa20_encrypt_block(key, counter, nonce, pt, ptidx)
 	local ba = table.pack(string.unpack(pat16, pt, ptidx))
 	local keystream = salsa20_block(key, counter, nonce)
 	for i = 1, 16 do
-		ba[i] = ba[i] ~ keystream[i]
+		ba[i] = bit32.bxor(ba[i], keystream[i])
 	end
 	local es = string.pack(pat16, table.unpack(ba))
 	if rbn < 64 then
@@ -132,7 +133,7 @@ local salsa20_encrypt = function(key, counter, nonce, pt)
 	assert(#nonce == 8, "#nonce must be 8")
 	local keya = table.pack(string.unpack("<I4I4I4I4I4I4I4I4", key))
 	local noncea = table.pack(string.unpack("<I4I4", nonce))
-	local countera = {counter & 0xffffffff, counter >> 32}
+	local countera = {bit32.band(counter, 0xffffffff), bit32.rshift(counter, 32)}
 	local t = {} -- used to collect all encrypted blocks
 	local ptidx = 1
 	while ptidx <= #pt do
@@ -152,7 +153,7 @@ local function salsa20_stream(key, counter, nonce, length)
 	assert(#nonce == 8, "#nonce must be 8")
 	local keya = table.pack(string.unpack("<I4I4I4I4I4I4I4I4", key))
 	local noncea = table.pack(string.unpack("<I4I4", nonce))
-	local countera = {counter & 0xffffffff, counter >> 32}
+	local countera = {bit32.band(counter, 0xffffffff), bit32.rshift(counter, 32)}
 	local t = {} -- used to collect all encrypted blocks
 	while length > 0 do
 		local keystream = salsa20_block(keya, countera, noncea)
@@ -174,7 +175,7 @@ local hsalsa20 = function(key, counter, nonce)
 	assert(#nonce == 8, "#nonce must be 8")
 	local keya = table.pack(string.unpack("<I4I4I4I4I4I4I4I4", key))
 	local noncea = table.pack(string.unpack("<I4I4", nonce))
-	local countera = {counter & 0xffffffff, counter >> 32}
+	local countera = {bit32.band(counter, 0xffffffff), bit32.rshift(counter, 32)}
 	local stream = hsalsa20_block(keya, countera, noncea)
 	return string.pack(pat8, table.unpack(stream))
 end

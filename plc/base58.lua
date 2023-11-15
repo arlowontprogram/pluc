@@ -55,7 +55,8 @@ local function encode(s)
 		more = false
 		for i = 1, #nt do
 			b = nt[i] + (256 * r)
-			q = b // 58
+			--q = b // 58
+			q = math.floor(b / 58)
 			-- if q is not null at least once, we are good
 			-- for another division by 58
 			more = more or q > 0
@@ -110,8 +111,10 @@ local function decode(s)
 		for j = 1, #dn do
 			b = dn[j]
 			m = b * 58 + carry
-			b = m & 0xff
-			carry = m >> 8
+			--b = m & 0xff
+			b = bit32.band(m, 0xff)
+			--carry = m >> 8
+			carry = bit32.rshift(m, 8)
 			dn[j] = b
 		end
 		if carry > 0 then dn[#dn + 1] = carry end
@@ -119,8 +122,10 @@ local function decode(s)
 		carry = d
 		for j = 1, #dn do
 			b = dn[j] + carry
-			carry = b >> 8
-			dn[j] = b & 0xff
+			--carry = b >> 8
+			carry = bit32.rshift(b, 8)
+			--dn[j] = b & 0xff
+			dn[j] = bit32.band(b, 0xff)
 		end
 		if carry > 0 then dn[#dn + 1] = carry end
 	end

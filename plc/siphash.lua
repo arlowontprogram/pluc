@@ -51,25 +51,25 @@ local function siphash_core(ins, k0, k1, flag16)
 	local v2 = 0x6c7967656e657261
 	local v3 = 0x7465646279746573
 	local inslen = #ins
-	local left = inslen & 7
-	local b = (#ins) << 56
+	local left = bit32.band(inslen, 7)
+	local b = bit32.lshift(#ins, 56)
 	local ii = 1
 	local m
 	local function sipround(v0, v1, v2, v3)
-		v0 = v0 + v1
-		v1 = (v1 << 13) | (v1 >> 51) -- 64-13
-		v1 = v1 ~ v0
-		v0 = (v0 << 32) | (v0 >> 32) -- 64-32
-		v2 = v2 + v3
-		v3 = (v3 << 16) | (v3 >> 48) -- 64-16
-		v3 = v3 ~ v2
-		v0 = v0 + v3
-		v3 = (v3 << 21) | (v3 >> 43) -- 64-21
-		v3 = v3 ~ v0
-		v2 = v2 + v1
-		v1 = (v1 << 17) | (v1 >> 47) -- 64-17
-		v1 = v1 ~ v2
-		v2 = (v2 << 32) | (v2 >> 32) -- 64-32
+		v0 += v1
+		v1 = bit32.bor(bit32.lshift(v1, 13), bit32.rshift(v1, 51)) -- 64-13
+		v1 = bit32.bxor(v1, v0)
+		v0 = bit32.bor(bit32.lshift(v0, 32), bit32.rshift(v0, 32)) -- 64-32
+		v2 += v3
+		v3 = bit32.bor(bit32.lshift(v3, 16), bit32.rshift(v3, 48)) -- 64-16
+		v3 = bit32.bxor(v3, v2)
+		v0 += v3
+		v3 = bit32.bor(bit32.lshift(v3, 21), bit32.rshift(v3, 43)) -- 64-21
+		v3 = bit32.bxor(v3, v0)
+		v2 += v2
+		v1 = bit32.bor(bit32.lshift(v1, 17), bit32.rshift(v1, 47)) -- 64-17
+		v1 = bit32.bxor(v1, v2)
+		v2 = bit32.bor(bit32.lshift(v2, 32), bit32.rshift(v2, 32)) -- 64-32
 		return v0, v1, v2, v3
 	end
 	--[[ (same output as the TRACE macro in the C reference implementation)
@@ -80,43 +80,47 @@ local function siphash_core(ins, k0, k1, flag16)
 		pf("(%d) v3 %08x %08x", inslen, v3>>32, v3 & 0xffffffff)
 	end
 	--]]
-    v3 = v3 ~ k1
-    v2 = v2 ~ k0
-    v1 = v1 ~ k1
-    v0 = v0 ~ k0
+    --v3 = v3 ~ k1
+	v3 = bit32.bxor(v3, k1)
+    --v2 = v2 ~ k0
+	v2 = bit32.bxor(v2, k0)
+    --v1 = v1 ~ k1
+	v1 = bit32.bxor(v1, k1)
+    --v0 = v0 ~ k0
+	v0 = bit32.bxor(v0, k0)
 	--trace()
 	if flag16 then v1 = v1 ~ 0xee end
 	while inslen - ii >= 7 do
 		m, ii = sunpack("<I8", ins, ii)
-		v3 = v3 ~ m
+		v3 = bit32.bxor(v3, m)
 		--trace()
 		for i = 1, cROUNDS do v0, v1, v2, v3 = sipround(v0, v1, v2, v3) end
 		--trace()
-		v0 = v0 ~ m
+		v0 = bit32.bxor(v0, m)
 		--trace()
 	end
-	if left > 0 then b = b | (byte(ins, ii) ) end	
-	if left > 1 then b = b | (byte(ins, ii+1) << 8) end	
-	if left > 2 then b = b | (byte(ins, ii+2) << 16) end	
-	if left > 3 then b = b | (byte(ins, ii+3) << 24) end	
-	if left > 4 then b = b | (byte(ins, ii+4) << 32) end	
-	if left > 5 then b = b | (byte(ins, ii+5) << 40) end	
-	if left > 6 then b = b | (byte(ins, ii+6) << 48) end	
-	v3 = v3 ~ b
+	if left > 0 then b = b | (byte(ins, ii) ) end
+	if left > 1 then b = b | (byte(ins, ii + 1) << 8) end
+	if left > 2 then b = b | (byte(ins, ii + 2) << 16) end
+	if left > 3 then b = b | (byte(ins, ii + 3) << 24) end
+	if left > 4 then b = b | (byte(ins, ii + 4) << 32) end
+	if left > 5 then b = b | (byte(ins, ii + 5) << 40) end
+	if left > 6 then b = b | (byte(ins, ii + 6) << 48) end
+	v3 = bit32.bxor(v3, b)
 	--trace()
 	for i = 1, cROUNDS do v0, v1, v2, v3 = sipround(v0, v1, v2, v3) end
-	v0 = v0 ~ b
-	v2 = v2 ~ (flag16 and 0xee or 0xff)
+	v0 = bit32.bxor(v0, b)
+	v2 = bit32.bxor(v2, (flag16 and 0xee or 0xff))
 	--trace()
 	for i = 1, dROUNDS do v0, v1, v2, v3 = sipround(v0, v1, v2, v3) end
 	
 	local r1, r2
-	r1 = v0 ~ v1 ~ v2 ~ v3
+	r1 = bit32.bxor(v0, v1, v2, v3)
 	if not flag16 then return r1, nil end
-	v1 = v1 ~ 0xdd
+	v1 = bit32.bxor(v1, 0xdd)
 	--trace()
 	for i = 1, dROUNDS do v0, v1, v2, v3 = sipround(v0, v1, v2, v3) end
-	r2 = v0 ~ v1 ~ v2 ~ v3
+	r2 = bit32.bxor(v0, v1, v2, v3)
 	return r1, r2
 end--siphash_core()
 

@@ -35,10 +35,53 @@ local function encode(s, filename_safe)
 		c1 = byte(s,i)
 		c2 = byte(s,i+1) or 0
 		c3 = byte(s,i+2) or 0
-		t4[1] = char(byte(b64chars, (c1 >> 2) + 1))
-		t4[2] = char(byte(b64chars, (((c1 << 4)|(c2 >> 4)) & 0x3f) + 1))
-		t4[3] = char(byte(b64chars, (((c2 << 2)|(c3 >> 6)) & 0x3f) + 1))
-		t4[4] = char(byte(b64chars, (c3 & 0x3f) + 1))
+
+		t4[1] = char(
+			byte(
+				b64chars,
+				--(c1 >> 2) + 1
+				bit32.rshift(c1, 2) + 1
+			)
+		)
+		t4[2] = char(
+			byte(
+				b64chars,
+				(
+					--[[
+					(
+						(c1 << 4)|(c2 >> 4)
+					) & 0x3f
+					]]
+					bit32.band( bit32.bor(
+						bit32.lshift(c1, 4),
+						bit32.rshift(c2, 4)
+					), 0x3f)
+				)
+			)
+		)
+		t4[3] = char(
+			byte(
+				b64chars,
+				(
+					--[[
+					(
+						(c2 << 2) | (c3 >> 6)
+					) & 0x3f + 1
+					]]
+					bit32.band( bit32.bor(
+						bit32.lshift(c2, 2),
+						bit32.rshift(c3, 6)
+					), 0x3f ) + 1
+			)
+		)
+		t4[4] = char(
+			byte(
+				b64chars,
+				--(c3 & 0x3f) + 1
+				bit32.band(c3, 0x3f) + 1
+			)
+		)
+
 		st[#st+1] = concat(t4)
 		-- insert a newline every 72 chars of encoded string
 		lln = lln + 4
@@ -80,20 +123,49 @@ local function decode(b)
 		if not e1 or not e2 then return nil, "invalid length" end
 		e3 = cmap[byte(b, i+2)]
 		e4 = cmap[byte(b, i+3)]
-		t3[1] = char((e1 << 2) |  (e2 >> 4))
+		--t3[1] = char((e1 << 2) |  (e2 >> 4))
+		t3[1] = char(
+			bit32.bor(
+				bit32.lshift(e1, 2),
+				bit32.rshift(e2, 4)
+			)
+		)
 		if not e3 then
 			t3[2] = nil
 			t3[3] = nil
 			st[#st + 1] = concat(t3)
 			break
 		end
-		t3[2] = char(((e2 << 4) | (e3 >> 2)) & 0xff)
+		--t3[2] = char(
+		--	(
+		--		(e2 << 4) | (e3 >> 2)
+		--	)
+		--	& 0xff
+		--)
+		t3[2] = char(
+			bit32.band(
+				bit32.bor(
+					bit32.lshift(e2, 4),
+					bit32.rshift(e3, 2)
+				),
+				0xff
+			)
+		)
 		if not e4 then
 			t3[3] = nil
 			st[#st + 1] = concat(t3)
 			break
 		end
-		t3[3] = char(((e3 << 6) | (e4)) & 0xff)
+		--t3[3] = char(((e3 << 6) | (e4)) & 0xff)
+		t3[3] = char(
+			bit32.band(
+				bit32.bor(
+					bit32.lshift(e3, 6),
+					e4
+				),
+				0xff
+			)
+		)
 		st[#st + 1] = concat(t3)
 	end --for
 	return concat(st)

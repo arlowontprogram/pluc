@@ -52,11 +52,11 @@ local function encode(s)
 	for i = 1, #s, 4 do
 		n = sunpack(">I4", s, i)
 --~ 		print(i, n)
-		r5 = n % 85 ; n = n // 85
-		r4 = n % 85 ; n = n // 85
-		r3 = n % 85 ; n = n // 85
-		r2 = n % 85 ; n = n // 85
-		r1 = n % 85 ; n = n // 85
+		r5 = n % 85 ; n = math.floor(n / 85)
+		r4 = n % 85 ; n = math.floor(n / 85)
+		r3 = n % 85 ; n = math.floor(n / 85)
+		r2 = n % 85 ; n = math.floor(n / 85)
+		r1 = n % 85 ; n = math.floor(n / 85)
 		local eb = char(
 			chars:byte(r1 + 1),
 			chars:byte(r2 + 1),
@@ -82,7 +82,7 @@ local function decode(e)
 			if not r then 
 				return nil, "invalid char"
 			end
-			n = n * 85 + r
+			n *= 85 + r
 		end
 		local sb = spack(">I4", n)
 		insert(st, sb)
@@ -96,6 +96,3 @@ local z85 = {
 }
 
 return z85
-
-
-

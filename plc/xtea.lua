@@ -29,7 +29,7 @@ on the Wikipedia page (modified to precompute the "sum + key[...]" terms)
 ------------------------------------------------------------------------
 -- debug functions (should be removed)
 
-local bin = require "plc.bin"
+local bin = require(script.Parent.bin)
 local stx = bin.stohex
 local xts = bin.hextos
 local function px(s) print(stx(s, 16, " ")) end
@@ -58,9 +58,9 @@ local function keysetup(key)
 	local skt1 = {} -- the "sum + key[sum>>11 & 3]" table
 	local sum, delta = 0, 0x9E3779B9
 	for i = 1, ROUNDS do
-		skt0[i] = sum + kt[(sum & 3) + 1]
-		sum = (sum + delta) & 0xffffffff
-		skt1[i] = sum + kt[((sum>>11) & 3) + 1]
+		skt0[i] = sum + kt[bit32.band(sum, 3) + 1]
+		sum = bit32.band(sum + delta, 0xffffffff)
+		skt1[i] = sum + kt[bit32.band(bit32.rshift(sum, 11), 3) + 1]
 	end
 	return { skt0=skt0, skt1=skt1, }
 end
@@ -70,14 +70,13 @@ local function encrypt_u64(st, bu)
 	-- ub: 64-bit block as a uint64 (big endian - unpack with ">I8")
 	local skt0, skt1 = st.skt0, st.skt1
 	-- xtea works on big endian numbers: v0 is MSB, v1 is LSB
-	local v0, v1 = bu >> 32, bu & 0xffffffff
---~ 	p8(v0);p8(v1);p8(b)
+	local v0, v1 = bit32.rshift(bu, 32), bit32.band(bu, 0xffffffff)
 	local sum, delta = 0, 0x9E3779B9
 	for i = 1, ROUNDS do
-		v0 = (v0 + ((((v1<<4) ~ (v1>>5)) + v1) ~ skt0[i])) & 0xffffffff
-		v1 = (v1 + ((((v0<<4) ~ (v0>>5)) + v0) ~ skt1[i])) & 0xffffffff
+		v0 = bit32.band(v0 + bit32.band(bit32.bxor(bit32.bxor(bit32.lshift(v1, 4), bit32.rshift(v1, 5)) + v1, skt0[i]), 0xffffffff), 0xffffffff)
+		v1 = bit32.band(v1 + bit32.band(bit32.bxor(bit32.bxor(bit32.lshift(v0, 4), bit32.rshift(v0, 5)) + v0, skt1[i]), 0xffffffff), 0xffffffff)
 	end
-	bu = (v0 << 32) | v1
+	bu = bit32.bor(bit32.lshift(v0, 32), v1)
 	return bu
 end
 
@@ -86,13 +85,15 @@ local function decrypt_u64(st, bu)
 	-- bu: 64-bit encrypted block as a uint64 (big endian)
 	-- returns decrypted block as a uint64
 	local skt0, skt1 = st.skt0, st.skt1
-	local v0, v1 = bu >> 32, bu & 0xffffffff
+	local v0, v1 = bit32.rshift(bu, 32), bit32.band(bu, 0xffffffff)
 	local sum, delta = 0, 0x9E3779B9
+
 	for i = ROUNDS, 1, -1 do
-		v1 = (v1 - ((((v0<<4) ~ (v0>>5)) + v0) ~ skt1[i])) & 0xffffffff
-		v0 = (v0 - ((((v1<<4) ~ (v1>>5)) + v1) ~ skt0[i])) & 0xffffffff
+		v1 = bit32.band(v1 - bit32.band(bit32.bxor(bit32.bxor(bit32.lshift(v0, 4), bit32.rshift(v0, 5)) + v0, skt1[i]), 0xffffffff), 0xffffffff)
+		v0 = bit32.band(v0 - bit32.band(bit32.bxor(bit32.bxor(bit32.lshift(v1, 4), bit32.rshift(v1, 5)) + v1, skt0[i]), 0xffffffff), 0xffffffff)
 	end
-	bu = (v0 << 32) | v1
+
+	bu = bit32.bor(bit32.lshift(v0, 32), v1)
 	return bu
 end
 

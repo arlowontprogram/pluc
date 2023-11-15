@@ -9,7 +9,8 @@ This implements the Ascon128 variant.
 
 ]]
 
-he = require"he"
+--he = require"he"
+he = require(script.Parent.bin)
 s2x = he.stohex
 
 local spack, sunpack = string.pack, string.unpack
@@ -414,11 +415,13 @@ end--aead_decrypt
 ------------------------------------------------------------------------
 -- the ascon module
 
-return {
+return {message = function() print('ascon is a WIP and will not be available until it has been completed') end}
+
+--[[return {
 	hash = hash,
 	mac = mac,
 	prf = prf,
 	aead_encrypt = aead_encrypt,
 	aead_decrypt = aead_decrypt,
-}
+}]]
 

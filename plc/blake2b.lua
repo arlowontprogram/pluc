@@ -25,7 +25,11 @@ local concat = table.concat
 ------------------------------------------------------------------------
 
 local function ROTR64(x, n)
-    return (x >> n) | (x << (64-n))
+    --return (x >> n) | (x << (64-n))
+	return bit32.bor(
+		bit32.rshift(x, n),
+		bit32.lshift(x, (64 - n))
+	)
 end
 
 -- G Mixing function.
@@ -74,9 +78,12 @@ local function compress(ctx, last)
 		v[i] = ctx.h[i]
 		v[i+8] = iv[i]
 	end
-	v[13] = v[13] ~ ctx.t[1]  -- low 64 bits of offset
-	v[14] = v[14] ~ ctx.t[2]  -- high 64 bits
-	if last then v[15] = ~v[15] end
+	--v[13] = v[13] ~ ctx.t[1]  -- low 64 bits of offset
+	v[13] = bit32.bxor(v[13], ctx.t[1])
+	--v[14] = v[14] ~ ctx.t[2]  -- high 64 bits
+	v[14] = bit32.bxor(v[14], ctx.t[2])
+	--if last then v[15] = ~v[15] end
+	if last then v[15] = bit32.bxor(v[15]) end
 	for i = 0, 15 do -- get little-endian words
 		m[i+1] = sunpack("<I8", ctx.b, i*8+1) --copy b as a seq of u64
 	end
@@ -95,7 +102,12 @@ local function compress(ctx, last)
 	end--twelve rounds
 
 	for i = 1, 8 do
-		ctx.h[i] = ctx.h[i] ~ v[i] ~ v[i + 8]
+		--ctx.h[i] = ctx.h[i] ~ v[i] ~ v[i + 8]
+		ctx.h[i] = bit32.bxor(
+			ctx.h[i],
+			v[i],
+			v[i + 8]
+		)
 	end
 end--compress()
 
@@ -124,7 +136,7 @@ local function init(outlen, key)
 	if keylen > 0 then
 		update(ctx, key)
 		-- ctx.c = 128 --  pad b with zero bytes
-		ctx.b = ctx.b .. string.rep('\0', 128 - #ctx.b)
+		ctx.b ..= string.rep('\0', 128 - #ctx.b)
 		assert(#ctx.b == 128)
 	end
 	return ctx
@@ -175,8 +187,22 @@ local function final(ctx)
 	-- extract the digest (outlen bytes long)
 	local outtbl = {}
 	for i = 0, ctx.outlen - 1 do
-		outtbl[i+1] = string.char(
-			(ctx.h[(i >> 3) + 1] >> (8 * (i & 7))) & 0xff)
+		--outtbl[i+1] = string.char(
+		--	(
+		--		ctx.h[(i >> 3) + 1]
+		--		>>
+		--		(8 * (i & 7))
+		--	) 
+		--	& 0xff
+		--)
+		outtbl[i + 1] = string.char(
+			bit32.lshift(
+				ctx.h[
+					bit32.lshift(i, 3) + 
+				],
+				(8 * bit32.band(i, 7))
+			)
+		)
 	end
 	local dig = concat(outtbl)
 	return dig

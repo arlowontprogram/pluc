@@ -42,7 +42,13 @@ local app, concat = table.insert, table.concat
 
 local function rotl32(i, n)
 	-- rotate left on 32 bits
-	return ((i << n) | (i >> (32 - n))) & 0xffffffff
+	--return (
+	--	(i << n) | (i >> (32 - n))
+	--) & 0xffffffff
+	return bit32.band(
+		(bit32.bor(bit32.lshift(i, n), bit32.rshift(i, 32-n))),
+		0xffffffff
+	)
 end
 
 ------------------------------------------------------------------------
@@ -53,9 +59,9 @@ local function gfunc(x)
 	local h = x * x
 	-- looks like the mult works for arbitrary uint32 x...
 	-- normal or happy impl detail?
-	local l = h & 0xffffffff
-	h = h >> 32  --logical shift: no sign extension => clean uint32
-	return h ~ l
+	local l = bit32.band(h, 0xffffffff)
+	h = bit32.rshift(h, 32) --logical shift: no sign extension => clean uint32
+	return bit32.bxor(h, l)
 end --gfunc
 
 local function newstate()
@@ -90,26 +96,26 @@ local function nextstate(st)
 	local rl = rotl32
 	for i = 1, 8 do  co[i] = c[i]  end
 	-- compute new counter values
-	c[1] = (c[1] + 0x4D34D34D + st.carry) & 0xffffffff
-	c[2] = (c[2] + 0xD34D34D3 + (c[1] < co[1] and 1 or 0)) & 0xffffffff
-	c[3] = (c[3] + 0x34D34D34 + (c[2] < co[2] and 1 or 0)) & 0xffffffff
-	c[4] = (c[4] + 0x4D34D34D + (c[3] < co[3] and 1 or 0)) & 0xffffffff
-	c[5] = (c[5] + 0xD34D34D3 + (c[4] < co[4] and 1 or 0)) & 0xffffffff
-	c[6] = (c[6] + 0x34D34D34 + (c[5] < co[5] and 1 or 0)) & 0xffffffff
-	c[7] = (c[7] + 0x4D34D34D + (c[6] < co[6] and 1 or 0)) & 0xffffffff
-	c[8] = (c[8] + 0xD34D34D3 + (c[7] < co[7] and 1 or 0)) & 0xffffffff
+	c[1] = bit32.band(c[1] + 0x4D34D34D + st.carry, 0xffffffff)
+	c[2] = bit32.band(c[2] + 0xD34D34D3 + (c[1] < co[1] and 1 or 0), 0xffffffff)
+	c[3] = bit32.band(c[3] + 0x34D34D34 + (c[2] < co[2] and 1 or 0), 0xffffffff)
+	c[4] = bit32.band(c[4] + 0x4D34D34D + (c[3] < co[3] and 1 or 0), 0xffffffff)
+	c[5] = bit32.band(c[5] + 0xD34D34D3 + (c[4] < co[4] and 1 or 0), 0xffffffff)
+	c[6] = bit32.band(c[6] + 0x34D34D34 + (c[5] < co[5] and 1 or 0), 0xffffffff)
+	c[7] = bit32.band(c[7] + 0x4D34D34D + (c[6] < co[6] and 1 or 0), 0xffffffff)
+	c[8] = bit32.band(c[8] + 0xD34D34D3 + (c[7] < co[7] and 1 or 0), 0xffffffff)
 	st.carry = c[8] < co[8] and 1 or 0
 	-- compute the g-values
-	for i = 1, 8 do g[i] = gfunc((x[i] + c[i]) & 0xffffffff) end
+	for i = 1, 8 do g[i] = gfunc(bit32.band((x[i] + c[i]), 0xffffffff)) end
 	-- compute new state values (don't forget arrays are 1-based!!)
-	x[1] = (g[1] + rl(g[8],16) + rl(g[7],16)) & 0xffffffff
-	x[2] = (g[2] + rl(g[1],8) + g[8]) & 0xffffffff
-	x[3] = (g[3] + rl(g[2],16) + rl(g[1],16)) & 0xffffffff
-	x[4] = (g[4] + rl(g[3],8) + g[2]) & 0xffffffff
-	x[5] = (g[5] + rl(g[4],16) + rl(g[3],16)) & 0xffffffff
-	x[6] = (g[6] + rl(g[5],8) + g[4]) & 0xffffffff
-	x[7] = (g[7] + rl(g[6],16) + rl(g[5],16)) & 0xffffffff
-	x[8] = (g[8] + rl(g[7],8) + g[6]) & 0xffffffff
+	x[1] = bit32.band(g[1] + rl(g[8],16) + rl(g[7],16))
+	x[2] = bit32.band(g[2] + rl(g[1],8) + g[8], 0xffffffff)
+	x[3] = bit32.band(g[3] + rl(g[2],16) + rl(g[1],16), 0xffffffff)
+	x[4] = bit32.band(g[4] + rl(g[3],8) + g[2], 0xffffffff)
+	x[5] = bit32.band(g[5] + rl(g[4],16) + rl(g[3],16), 0xffffffff)
+	x[6] = bit32.band(g[6] + rl(g[5],8) + g[4], 0xffffffff)
+	x[7] = bit32.band(g[7] + rl(g[6],16) + rl(g[5],16), 0xffffffff)
+	x[8] = bit32.band(g[8] + rl(g[7],8) + g[6], 0xffffffff)
 	-- done
 end --nextstate
 
@@ -123,19 +129,27 @@ local function keysetup(st, key)
 	x[3] = k2
 	x[5] = k3
 	x[7] = k4
-	x[2] = ((k4<<16) & 0xffffffff | (k3>>16))
-	x[4] = ((k1<<16) & 0xffffffff | (k4>>16))
-	x[6] = ((k2<<16) & 0xffffffff | (k1>>16))
-	x[8] = ((k3<<16) & 0xffffffff | (k2>>16))
+	--x[2] = ((k4<<16) & 0xffffffff | (k3>>16))
+	--x[4] = ((k1<<16) & 0xffffffff | (k4>>16))
+	--x[6] = ((k2<<16) & 0xffffffff | (k1>>16))
+	--x[8] = ((k3<<16) & 0xffffffff | (k2>>16))
+	x[2] = bit32.bor(bit32.band(bit32.lshift(k4, 16), 0xffffffff), bit32.rshift(k3, 16))
+	x[4] = bit32.bor(bit32.band(bit32.lshift(k1, 16), 0xffffffff), bit32.rshift(k4, 16))
+	x[6] = bit32.bor(bit32.band(bit32.lshift(k2, 16), 0xffffffff), bit32.rshift(k1, 16))
+	x[8] = bit32.bor(bit32.band(bit32.lshift(k3, 16), 0xffffffff), bit32.rshift(k2, 16))
 	-- initial counter values
 	c[1] = rotl32(k3, 16)
 	c[3] = rotl32(k4, 16)
 	c[5] = rotl32(k1, 16)
 	c[7] = rotl32(k2, 16)
-	c[2] = (k1 & 0xffff0000) | (k2 & 0xffff)
-	c[4] = (k2 & 0xffff0000) | (k3 & 0xffff)
-	c[6] = (k3 & 0xffff0000) | (k4 & 0xffff)
-	c[8] = (k4 & 0xffff0000) | (k1 & 0xffff)
+	--c[2] = (k1 & 0xffff0000) | (k2 & 0xffff)
+	--c[4] = (k2 & 0xffff0000) | (k3 & 0xffff)
+	--c[6] = (k3 & 0xffff0000) | (k4 & 0xffff)
+	--c[8] = (k4 & 0xffff0000) | (k1 & 0xffff)
+	c[2] = bit32.bor(bit32.band(k1, 0xffff0000), bit32.band(k2, 0xffff))
+	c[4] = bit32.bor(bit32.band(k2, 0xffff0000), bit32.band(k3, 0xffff))
+	c[6] = bit32.bor(bit32.band(k3, 0xffff0000), bit32.band(k4, 0xffff))
+	c[8] = bit32.bor(bit32.band(k4, 0xffff0000), bit32.band(k1, 0xffff))
 	--
 	st.carry = 0
 	-- iterate 4 times
@@ -143,8 +157,8 @@ local function keysetup(st, key)
 		nextstate(st)
 	end
 	-- modify the counters
-	for i = 1, 4 do c[i] = c[i] ~ x[i+4] end
-	for i = 5, 8 do c[i] = c[i] ~ x[i-4] end
+	for i = 1, 4 do c[i] = bit32.bxor(c[i], x[i+4]) end
+	for i = 5, 8 do c[i] = bit32.bxor(c[i], x[i-4]) end
 end
 
 local function ivsetup(st, iv)
@@ -153,18 +167,20 @@ local function ivsetup(st, iv)
 	assert(#iv == 8)
 	local i1, i2, i3, i4
 	i1, i3 = sunpack("<I4I4", iv)
-	i2 = (i1 >> 16) | (i3 & 0xffff0000)
-	i4 = (i3 << 16) & 0xffffffff | (i1 & 0x0000ffff)
+	--i2 = (i1 >> 16) | (i3 & 0xffff0000)
+	i2 = bit32.bor(bit32.rshift(i1, 16), bit32.band(i3, 0xffff0000))
+	--i4 = (i3 << 16) & 0xffffffff | (i1 & 0x0000ffff)
+	i4 = bit32.bor(bit32.band(bit32.lshift(i3, 16), 0xffffffff), bit32.band(i1, 0x0000ffff))
 	-- modify counter values
 	local c = st.c
-	c[1] = c[1] ~ i1
-	c[2] = c[2] ~ i2
-	c[3] = c[3] ~ i3
-	c[4] = c[4] ~ i4
-	c[5] = c[5] ~ i1
-	c[6] = c[6] ~ i2
-	c[7] = c[7] ~ i3
-	c[8] = c[8] ~ i4
+	c[1] = bit32.bxor(c[1], i1)
+	c[2] = bit32.bxor(c[2], i2)
+	c[3] = bit32.bxor(c[3], i3)
+	c[4] = bit32.bxor(c[4], i4)
+	c[5] = bit32.bxor(c[5], i1)
+	c[6] = bit32.bxor(c[6], i2)
+	c[7] = bit32.bxor(c[7], i3)
+	c[8] = bit32.bxor(c[8], i4)
 	-- iterate 4 times
 	for _ = 1, 4 do  nextstate(st)  end
 	-- done
@@ -191,10 +207,10 @@ local function processblock(st, itxt, idx)
 	i1, i2, i3, i4 = sunpack(fmt, itxt, idx)
 	nextstate(st)
 	local x = st.x
-	o1 = i1 ~ x[1] ~ (x[6] >> 16) ~ ((x[4] << 16) & 0xffffffff)
-	o2 = i2 ~ x[3] ~ (x[8] >> 16) ~ ((x[6] << 16) & 0xffffffff)
-	o3 = i3 ~ x[5] ~ (x[2] >> 16) ~ ((x[8] << 16) & 0xffffffff)
-	o4 = i4 ~ x[7] ~ (x[4] >> 16) ~ ((x[2] << 16) & 0xffffffff)
+	o1 = bit32.bxor(i1, x[1], bit32.rshift(x[6], 16), bit32.band(bit32.lshift(x[4], 16), 0xffffffff))
+	o2 = bit32.bxor(i2, x[3], bit32.rshift(x[8], 16), bit32.band(bit32.lshift(x[6], 16), 0xffffffff))
+	o3 = bit32.bxor(i3, x[5], bit32.rshift(x[2], 16), bit32.band(bit32.lshift(x[8], 16), 0xffffffff))
+	o4 = bit32.bxor(i4, x[7], bit32.rshift(x[4], 16), bit32.band(bit32.lshift(x[2], 16), 0xffffffff))
 	local outstr = spack(fmt, o1, o2, o3, o4)
 	if short then
 		outstr = string.sub(outstr, 1, bn)

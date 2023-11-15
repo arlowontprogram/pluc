@@ -14,10 +14,12 @@ in RFC 7539 [2].
 This file uses chacha20.lua and poly1305 for the encryption
 and MAC primitives.
 
+no non-luau methods within this script
+
 ]]
 
-local chacha20 = require "plc.chacha20"
-local poly1305 = require "plc.poly1305"
+local chacha20 = require(script.Parent.chacha20)
+local poly1305 = require(script.Parent.poly1305)
 
 ------------------------------------------------------------
 -- poly1305 key generation

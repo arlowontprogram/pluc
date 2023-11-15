@@ -51,7 +51,14 @@ local insert, concat = table.insert, table.concat
 -- the gimli core permutation
 
 local function rotate(x, n) 
-    return ((x << n) | (x >> (32-n))) & 0xffffffff
+    --return ((x << n) | (x >> (32-n))) & 0xffffffff
+	return bit32.band(
+		bit32.bxor(
+			bit32.lshift(x, n),
+			bit32.rshift(x, (32-n))
+		),
+		0xffffffff
+	)
 end
 
 local function gimli_core32(st)
@@ -62,9 +69,23 @@ local function gimli_core32(st)
 			x = rotate(st[col], 24)
 			y = rotate(st[col+4], 9)
 			z = st[col+8]
-			st[col+8] = (x ~ (z << 1) ~ ((y & z) << 2)) & 0xffffffff
-			st[col+4] = (y ~ x        ~ ((x | z) << 1)) & 0xffffffff
-			st[col]   = (z ~ y        ~ ((x & y) << 3)) & 0xffffffff
+			--st[col+8] = (
+			--	x ~ (z << 1) ~ ((y & z) << 2)
+			--) & 0xffffffff
+			st[col+8] = bit32.band(
+				bit32.bxor(x, bit32.lshift(z, 1), bit32.lshift(bit32.band(y, z), 2)),
+				0xffffffff
+			)
+			--st[col+4] = (y ~ x        ~ ((x | z) << 1)) & 0xffffffff
+			st[col+4] = bit32.band(
+				bit32.bxor(y, x, bit32.lshift(bit32.bor(x, z), 1)),
+				0xffffffff
+			)
+			--st[col]   = (z ~ y        ~ ((x & y) << 3)) & 0xffffffff
+			st[col] = bit32.band(
+				bit32.bxor(z, y, bit32.lshift(bit32.band(x, y), 3)),
+				0xffffffff
+			)
 		end--for
 		-- !! 1-indexed arrays !! st[i] in C is st[i+1] in Lua
 		if (round & 3) == 0 then

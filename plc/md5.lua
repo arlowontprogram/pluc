@@ -8,30 +8,98 @@ local spack, sunpack = string.pack, string.unpack
 ------------------------------------------------------------------------
 
 local function FF(a, b, c, d, x, s, ac)
-	a = (a + ((b & c) | ((~b) & d)) + x + ac) & 0xffffffff
-	a = ((a << s) | (a >> (32-s))) & 0xffffffff
-	a = (a + b) & 0xffffffff
+	--a = (
+    --    a + (
+    --        (b & c) | ((~b) & d)
+    --    ) + x + ac
+    --) & 0xffffffff
+    a = bit32.band(
+        (
+            a + bit32.bor(bit32.band(b, c), bit32.band(bit32.bxor(b), d)) + x + ac
+        ),
+        0xffffffff
+    )
+	--a = (
+    --    (a << s) | (a >> (32-s))
+    --) & 0xffffffff
+    a = bit32.band(
+        (bit32.bor(bit32.lshift(a, s), bit32.rshift(a, (32-s)))),
+        0xffffffff
+    )
+	--a = (a + b) & 0xffffffff
+    a = bit32.band(a+b, 0xffffffff)
 	return a
 end
 
 local function GG(a, b, c, d, x, s, ac)
-	a = (a + ((b & d) | c & (~d) ) + x + ac) & 0xffffffff
-	a = ((a << s) | (a >> (32-s))) & 0xffffffff
-	a = (a + b) & 0xffffffff
+	--a = (
+    --    a + (
+    --        (b & d) | c & (~d) 
+    --    ) + x + ac
+    --) & 0xffffffff
+    a = bit32.band(
+        (a + bit32.bor(bit32.band(b, d), bit32.band(c, bit32.bxor(d))) + x + ac),
+        0xffffffff
+    )
+	--a = (
+    --    (a << s) | (a >> (32-s))
+    --) & 0xffffffff
+    a = bit32.band(
+        (bit32.bor(bit32.lshift(a, s), bit32.rshift(a, 32-s))),
+        0xffffffff
+    )
+	--a = (a + b) & 0xffffffff
+    a = bit32.band(a+b, 0xffffffff)
 	return a
 end
 
 local function HH(a, b, c, d, x, s, ac)
-	a = (a + ((b ~ c ~ d)) + x + ac) & 0xffffffff
-	a = ((a << s) | (a >> (32-s))) & 0xffffffff
-	a = (a + b) & 0xffffffff
+	--a = (
+    --    a + (
+    --        (b ~ c ~ d)
+    --    ) + x + ac
+    --) & 0xffffffff
+    a = bit32.band(
+        (a + bit32.bxor(b, c, d) + x + ac),
+        0xffffffff
+    )
+	--a = (
+    --    (a << s) | (a >> (32-s))
+    --) & 0xffffffff
+    a = bit32.band(
+        (bit32.bor(
+            bit32.lshift(a, s),
+            bit32.rshift(a, 32-s)
+        )),
+        0xffffffff
+    )
+	--a = (a + b) & 0xffffffff
+    a = bit32.band(a+b, 0xffffffff)
 	return a
 end
 
 local function II(a, b, c, d, x, s, ac)
-	a = (a + (c ~ (b | ~d)) + x + ac) & 0xffffffff
-	a = ((a << s) | (a >> (32-s))) & 0xffffffff
-	a = (a + b) & 0xffffffff
+	--a = (
+    --    a + 
+    --    (c ~ (b | ~d))
+    --     + x + ac
+    --) & 0xffffffff
+    a = bit32.band(
+        (a + bit32.bxor(c, bit32.bor(b, bit32.bxor(d))) + x + ac),
+        0xffffffff
+    )
+	--a = (
+    --    (a << s) | (a >> (32-s))
+    --) & 0xffffffff
+    a = bit32.band(
+        (bit32.bor(
+            bit32.lshift(a, s),
+            bit32.rshift(a, 32-s)
+        )),
+        0xffffffff
+    )
+	--a = (a + b) & 0xffffffff
+    a = bit32.band(a+b, 0xffffffff)
 	return a
 end
 
@@ -138,8 +206,8 @@ local function md5(input)
 	while r >= 64 do
 		-- process block
 		transform(state, input, i, ibt)
-		i = i + 64 -- update input index
-		r = r - 64 -- update number of unprocessed bytes
+		i += 64 -- update input index
+		r -= 64 -- update number of unprocessed bytes
 	end
 	-- finalize.  must append to input a mandatory 0x80 byte, some
 	--  padding, and the input bit-length ('inputbits')

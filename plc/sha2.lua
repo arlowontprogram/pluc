@@ -19,6 +19,8 @@
 -- https://github.com/Egor-Skriptunoff/pure_lua_SHA2
 
 
+-- my head hurts after looking at how many nests there are-
+
 ------------------------------------------------------------
 -- local declarations
 
@@ -75,18 +77,28 @@ local function sha256 (msg)
 		= sunpack(">I4I4I4I4I4I4I4I4I4I4I4I4I4I4I4I4", msg, i)
 		-- mix msg block in state
 		for j = 17, 64 do
-			local x = w[j - 15]; x = (x << 32) | x
-			local y = w[j - 2]; y = (y << 32) | y
-			w[j] = (  ((x >> 7) ~ (x >> 18) ~ (x >> 35))
-				+ ((y >> 17) ~ (y >> 19) ~ (y >> 42))
-				+ w[j - 7] + w[j - 16]  ) & 0xffffffff
+			local x = w[j - 15]; x = bit32.bor(bit32.lshift(x, 32), x)
+			local y = w[j - 2]; y = bit32.bor(bit32.lshift(y, 32), y)
+			w[j] = bit32.band(
+				bit32.bxor(
+					bit32.bxor(bit32.rshift(x, 7), bit32.rshift(x, 18)),
+					bit32.bxor(bit32.rshift(x, 35), bit32.rshift(y, 17))
+				) + bit32.bxor(
+					bit32.bxor(bit32.rshift(y, 19), bit32.rshift(y, 42)),
+					w[j - 7] + w[j - 16]
+				),
+				0xffffffff
+			)
 		end
 		local a, b, c, d, e, f, g, h = h1, h2, h3, h4, h5, h6, h7, h8
 		-- main state permutation
 		for j = 1, 64 do
-			e = (e << 32) | (e & 0xffffffff)
-			local t1 = ((e >> 6) ~ (e >> 11) ~ (e >> 25))
-				+ (g ~ e & (f ~ g)) + h + k[j] + w[j]
+			e = bit32.bor(bit32.lshift(e, 32), bit32.band(e, 0xffffffff))
+
+			local t1 = bit32.bxor(
+				bit32.bxor(bit32.rshift(e, 6), bit32.rshift(e, 11)),
+				bit32.bxor(bit32.rshift(e, 25), bit32.band(bit32.bxor(g, bit32.band(e, bit32.bxor(f, g))), 0xffffffff))
+			) + h + k[j] + w[j]
 			h = g
 			g = f
 			f = e
@@ -94,28 +106,29 @@ local function sha256 (msg)
 			d = c
 			c = b
 			b = a
-			a = (a << 32) | (a & 0xffffffff)
-			a = t1 	+ ((a ~ c) & d ~ a & c) 
-				+ ((a >> 2) ~ (a >> 13) ~ (a >> 22))
+			a = bit32.bor(bit32.lshift(a, 32), bit32.band(a, 0xffffffff))
+
+		a = t1 + bit32.band(bit32.bxor(a, c), d) - bit32.band(a, c) + bit32.bxor(bit32.bxor(bit32.rshift(a, 2), bit32.rshift(a, 13)), bit32.rshift(a, 22))
+
 		end
-		h1 = h1 + a
-		h2 = h2 + b 
-		h3 = h3 + c 
-		h4 = h4 + d 
-		h5 = h5 + e 
-		h6 = h6 + f 
-		h7 = h7 + g 
-		h8 = h8 + h 
+		h1 += a
+		h2 += b 
+		h3 += c 
+		h4 += d 
+		h5 += e 
+		h6 += f 
+		h7 += g 
+		h8 += h 
 	end
 	-- clamp hash to 32-bit words
-	h1 = h1 & 0xffffffff
-	h2 = h2 & 0xffffffff
-	h3 = h3 & 0xffffffff
-	h4 = h4 & 0xffffffff
-	h5 = h5 & 0xffffffff
-	h6 = h6 & 0xffffffff
-	h7 = h7 & 0xffffffff
-	h8 = h8 & 0xffffffff
+	h1 = bit32.band(h1, 0xffffffff)
+	h2 = bit32.band(h2, 0xffffffff)
+	h3 = bit32.band(h3, 0xffffffff)
+	h4 = bit32.band(h4, 0xffffffff)
+	h5 = bit32.band(h5, 0xffffffff)
+	h6 = bit32.band(h6, 0xffffffff)
+	h7 = bit32.band(h7, 0xffffffff)
+	h8 = bit32.band(h8, 0xffffffff)
 	-- return hash as a binary string
 	return spack(">I4I4I4I4I4I4I4I4", h1, h2, h3, h4, h5, h6, h7, h8)
 end --sha256
@@ -176,18 +189,53 @@ local function sha512 (msg)
 		-- mix msg block in state
 
 		for j = 17, 80 do
-			local a = w[j-15]
-			local b = w[j-2]
-			w[j] = (a >> 1 ~ a >> 7 ~ a >> 8 ~ a << 56 ~ a << 63)
-			  + (b >> 6 ~ b >> 19 ~ b >> 61 ~ b << 3 ~ b << 45) 
-			  + w[j-7] + w[j-16]
+			local a = w[j - 15]
+			local b = w[j - 2]
+
+			-- wtf
+			w[j] = bit32.bxor(
+				bit32.bxor(
+					bit32.bxor(
+						bit32.bxor(
+							bit32.bxor(bit32.rshift(a, 1), bit32.rshift(a, 7)),
+							bit32.rshift(a, 8)
+						),
+						bit32.lshift(a, 56)
+					),
+					bit32.lshift(a, 63)
+				),
+				bit32.bxor(
+					bit32.bxor(
+						bit32.bxor(bit32.rshift(b, 6), bit32.rshift(b, 19)),
+						bit32.rshift(b, 61)
+					),
+					bit32.bxor(bit32.lshift(b, 3), bit32.lshift(b, 45))
+				)
+			) + w[j - 7] + w[j - 16]
+
 		end
 		local a, b, c, d, e, f, g, h = h1, h2, h3, h4, h5, h6, h7, h8
 		-- main state permutation
 		for j = 1, 80 do
-			local z = (e >> 14 ~ e >> 18 ~ e >> 41 ~ e << 23 
-				   ~ e << 46 ~ e << 50) 
-				+ (g ~ e & (f ~ g)) + h + k[j] + w[j]
+			local z = bit32.bxor(
+				bit32.bxor(
+					bit32.bxor(
+						bit32.bxor(
+							bit32.bxor(bit32.rshift(e, 14), bit32.rshift(e, 18)),
+							bit32.rshift(e, 41)
+						),
+						bit32.lshift(e, 23)
+					),
+					bit32.lshift(e, 46)
+				),
+				bit32.lshift(e, 50)
+			) + bit32.bxor(
+				bit32.bxor(
+					bit32.bxor(bit32.bxor(g, bit32.band(e, bit32.bxor(f, g))), h),
+					k[j]
+				),
+				w[j]
+			)
 			h = g
 			g = f
 			f = e
@@ -195,18 +243,31 @@ local function sha512 (msg)
 			d = c
 			c = b
 			b = a
-			a = z + ((a ~ c) & d ~ a & c) 
-			      + (a >> 28 ~ a >> 34 ~ a >> 39 ~ a << 25 
-				~ a << 30 ~ a << 36)
+			a = bit32.band(
+				bit32.bxor(
+					bit32.bxor(
+						bit32.bxor(
+							bit32.bxor(
+								bit32.bxor(bit32.rshift(a, 28), bit32.rshift(a, 34)),
+								bit32.rshift(a, 39)
+							),
+							bit32.lshift(a, 25)
+						),
+						bit32.lshift(a, 30)
+					),
+					bit32.lshift(a, 36)
+				) + bit32.band(bit32.bxor(bit32.band(a, bit32.bxor(c, d)), d), 0xffffffff),
+				0xffffffff
+			)
 		end
-		h1 = h1 + a
-		h2 = h2 + b 
-		h3 = h3 + c 
-		h4 = h4 + d 
-		h5 = h5 + e 
-		h6 = h6 + f 
-		h7 = h7 + g 
-		h8 = h8 + h 
+		h1 += a
+		h2 += b 
+		h3 += c 
+		h4 += d 
+		h5 += e 
+		h6 += f 
+		h7 += g 
+		h8 += h 
 	end
 	-- return hash as a binary string
 	return spack(">i8i8i8i8i8i8i8i8", h1, h2, h3, h4, h5, h6, h7, h8)

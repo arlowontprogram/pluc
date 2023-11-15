@@ -75,7 +75,7 @@ local function keccakF(st)
 		for x = 1,5 do
 			parities[x] = 0
 			local sx = st[x]
-			for y = 1,5 do parities[x] = parities[x] ~ sx[y] end
+			for y = 1,5 do parities[x] = bit32.bxor(parities[x], sx[y]) end
 		end
 		--
 		-- unroll the following loop
@@ -85,31 +85,18 @@ local function keccakF(st)
 		--	for y = 1,5 do st[x][y] = st[x][y] ~ flip end
 		--end
 		local p5, flip, s
-		--x=1
-		p5 = parities[2]
-		flip = parities[5] ~ (p5 << 1 | p5 >> 63)
-		s = st[1]
-		for y = 1,5 do s[y] = s[y] ~ flip end
-		--x=2
-		p5 = parities[3]
-		flip = parities[1] ~ (p5 << 1 | p5 >> 63)
-		s = st[2]
-		for y = 1,5 do s[y] = s[y] ~ flip end
-		--x=3
-		p5 = parities[4]
-		flip = parities[2] ~ (p5 << 1 | p5 >> 63)
-		s = st[3]
-		for y = 1,5 do s[y] = s[y] ~ flip end
-		--x=4
-		p5 = parities[5]
-		flip = parities[3] ~ (p5 << 1 | p5 >> 63)
-		s = st[4]
-		for y = 1,5 do s[y] = s[y] ~ flip end
-		--x=5
-		p5 = parities[1]
-		flip = parities[4] ~ (p5 << 1 | p5 >> 63)
-		s = st[5]
-		for y = 1,5 do s[y] = s[y] ~ flip end
+		local function bit_flip(s, x, parities)
+			local flip = parities[x] ~ (parities[x - 1] << 1 | parities[x - 1] >> 63)
+			for y = 1, 5 do
+				s[y] = s[y] ~ flip
+			end
+		end
+				
+		for x = 2, 5 do
+			bit_flip(st[x - 1], x, parities)
+		end
+		
+		bit_flip(st[5], 1, parities)
 
 		-- rhopi()
 		for y = 1,5 do
@@ -117,7 +104,7 @@ local function keccakF(st)
 			local r
 			for x = 1,5 do
 				s, r = st[x][y], rotationOffsets[x][y]
-				py[(2*x + 3*y)%5 + 1] = (s << r | s >> (64-r))
+				py[(2 * x + 3 * y) % 5 + 1] = bit32.bor(bit32.lshift(s, r) | bit32.rshift(s, 64 - r))
 			end
 		end
 
@@ -129,25 +116,32 @@ local function keccakF(st)
 		--	end
 		--end
 
-		local p, p1, p2
-		--x=1
-		s, p, p1, p2 = st[1], permuted[1], permuted[2], permuted[3]
-		for y = 1,5 do s[y] = p[y] ~ (~ p1[y]) & p2[y] end
-		--x=2
-		s, p, p1, p2 = st[2], permuted[2], permuted[3], permuted[4]
-		for y = 1,5 do s[y] = p[y] ~ (~ p1[y]) & p2[y] end
-		--x=3
-		s, p, p1, p2 = st[3], permuted[3], permuted[4], permuted[5]
-		for y = 1,5 do s[y] = p[y] ~ (~ p1[y]) & p2[y] end
-		--x=4
-		s, p, p1, p2 = st[4], permuted[4], permuted[5], permuted[1]
-		for y = 1,5 do s[y] = p[y] ~ (~ p1[y]) & p2[y] end
-		--x=5
-		s, p, p1, p2 = st[5], permuted[5], permuted[1], permuted[2]
-		for y = 1,5 do s[y] = p[y] ~ (~ p1[y]) & p2[y] end
-
-		-- iota()
-		st[1][1] = st[1][1] ~ roundConstants[round]
+		local function applyOperations(st, permuted, roundConstants, round)
+			local function applyOperation(s, p, p1, p2)
+				for y = 1, 5 do
+					s[y] = p[y] ~ (~p1[y]) & p2[y]
+				end
+			end
+		
+			local xValues = {1, 2, 3, 4, 5}
+			local permutedIndices = {1, 2, 3, 4, 5}
+		
+			for i = 1, 5 do
+				local x = xValues[i]
+				local permutedIndex = permutedIndices[i]
+		
+				local s = st[x]
+				local p = permuted[permutedIndex]
+				local p1 = permuted[permutedIndex % 5 + 1]
+				local p2 = permuted[permutedIndex % 5 + 2]
+		
+				applyOperation(s, p, p1, p2)
+			end
+		
+			st[1][1] = st[1][1] ~ roundConstants[round]
+		end
+		
+		applyOperations(st, permuted, roundConstants, round)
 	end
 end
 
@@ -177,7 +171,7 @@ local function absorb(st, buffer)
 
 	local totalWords = #words
 	-- OR final word with 0x80000000 to set last bit of state to 1
-	words[totalWords] = words[totalWords] | 0x8000000000000000
+	words[totalWords] = bit32.bor(words[totalWords], 0x8000000000000000)
 
 	-- XOR blocks into state
 	for startBlock = 1, totalWords, blockWords do
@@ -186,8 +180,8 @@ local function absorb(st, buffer)
 			for x = 1, 5 do
 				if offset < blockWords then
 					local index = startBlock+offset
-					st[x][y] = st[x][y] ~ words[index]
-					offset = offset + 1
+					st[x][y] = bit32.bxor(st[x][y], words[index])
+					offset += 1
 				end
 			end
 		end
@@ -209,7 +203,7 @@ local function squeeze(st)
 		for x = 1, 5 do
 			if offset < blockWords then
 				hasht[offset] = spack("<I8", st[x][y])
-				offset = offset + 1
+				offset += 1
 			end
 		end
 	end

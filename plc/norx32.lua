@@ -56,14 +56,25 @@ local FINAL_TAG   = 0x08
 -- local BRANCH_TAG  = 0x10
 -- local MERGE_TAG   = 0x20
 
--- local function ROTR32(x, n) -- INLINED in G()
---     return (x >> n) | (x << (64-n))
--- end
+local function ROTR32(x, n) -- INLINED in G()
+    --return (x >> n) | (x << (64-n))
+	return bit32.bor(
+		bit32.rshift(x, n),
+		bit32.lshift(x, 64-n)
+	)
+end
 
--- local function H(a, b)  -- INLINED in G()
--- 	--  The nonlinear primitive.  a, b: u32
--- 	return (a ~ b) ~ ((a & b) << 1)
--- end
+local function H(a, b)  -- INLINED in G()
+	--  The nonlinear primitive.  a, b: u64
+	--return (a ~ b) ~ ((a & b) << 1)
+	return bit32.bxor(
+		bit32.bxor(a, b),
+		bit32.lshift(
+			bit32.band(a, b),
+			1
+		)
+	)
+end
 
 local function G(s, a, b, c, d)
 	-- The quarter-round.
@@ -73,14 +84,14 @@ local function G(s, a, b, c, d)
 	-- H(): return (a ~ b) ~ ((a & b) << 1) -- INLINED
 	-- ROTR32(): return (x >> n) | (x << (32-n)) --INLINED
 	-- Lua integers are 64-bit. So trim to 32 bits (" & 0xffffffff")
-	A = (A ~ B) ~ ((A & B) << 1) & 0xffffffff  -- H(A, B);
-	D = D ~ A; D = ((D >> 8) | (D << 24)) & 0xffffffff --ROTR32(D, 8) --R0
-	C = (C ~ D) ~ ((C & D) << 1) & 0xffffffff  -- H(C, D);
-	B = B ~ C; B = ((B >> 11) | (B << 21)) & 0xffffffff --ROTR32(B, 11) --R1
-	A = (A ~ B) ~ ((A & B) << 1) & 0xffffffff  -- H(A, B);
-	D = D ~ A; D = ((D >> 16) | (D << 16)) & 0xffffffff --ROTR32(D, 16) --R2
-	C = (C ~ D) ~ ((C & D) << 1) & 0xffffffff  -- H(C, D);
-	B = B ~ C; B = ((B >> 31) | (B << 1)) & 0xffffffff --ROTR32(B, 31) --R3
+	A = H(A, B);
+	D = ROTR32(D, 8) --R0
+	C = H(C, D);
+	B = ROTR32(B, 11) --R1
+	A = H(A, B);
+	D = ROTR32(D, 16) --R2
+	C = H(C, D);
+	B = ROTR32(B, 31) --R3
 	s[a], s[b], s[c], s[d] = A, B, C, D
 end
 
@@ -119,7 +130,8 @@ end
 local function absorb_block(s, ins, ini, tag)
 	-- the input string is the substring of 'ins' starting at position 'ini'
 	-- (we cannot use a char* as in C!)
-	s[16] = s[16] ~ tag
+	--s[16] = s[16] ~ tag
+	s[16] = bit32.bxor(s[16], tag)
 	permute(s)
 	for i = 1, 12 do
 		s[i] = s[i] ~ sunpack("<I4", ins, ini + (i-1)*4)
@@ -133,7 +145,8 @@ end
 local function encrypt_block(s, out_table, ins, ini)
 	-- encrypt block in 'ins' at offset 'ini'
 	-- append encrypted chunks at the end of out_table
-	s[16] = s[16] ~ PAYLOAD_TAG
+	--s[16] = s[16] ~ PAYLOAD_TAG
+	s[16] = bit32.bxor(s[16], PAYLOAD_TAG)
 	permute(s)
 	for i = 1, 12 do
 		s[i] = s[i] ~ sunpack("<I4", ins, ini + (i-1)*4)
@@ -156,11 +169,12 @@ end
 local function decrypt_block(s, out_table, ins, ini)
 	-- decrypt block in 'ins' at offset 'ini'
 	-- append decrypted chunks at the end of out_table
-	s[16] = s[16] ~ PAYLOAD_TAG
+	--s[16] = s[16] ~ PAYLOAD_TAG
+	s[16] = bit32.bxor(s[16], PAYLOAD_TAG)
 	permute(s)
 	for i = 1, 12 do
 		local c = sunpack("<I4", ins, ini + (i-1)*4)
-		insert(out_table, spack("<I4", s[i] ~ c))
+		insert(out_table, spack("<I4", bit32.bxor(s[i], c)))
 		s[i] = c
 	end
 end
@@ -170,7 +184,8 @@ local function decrypt_lastblock(s, out_table, last)
 	-- append decrypted block at the end of out_table
 	--
 	local lastlen = #last
-	s[16] = s[16] ~ PAYLOAD_TAG
+	--s[16] = s[16] ~ PAYLOAD_TAG
+	s[16] = bit32.bxor(s[16], PAYLOAD_TAG)
 	permute(s)
 	--
 	-- Lua hack to perform the 'xor 0x01' and 'xor 0x80'...
@@ -192,8 +207,8 @@ local function decrypt_lastblock(s, out_table, last)
 		lastblock_byte_table[i] = byte(last, i)
 	end
 	-- perform the 'xor's
-	lastblock_byte_table[lastlen+1] = lastblock_byte_table[lastlen+1] ~ 0x01
-	lastblock_byte_table[48] = lastblock_byte_table[48] ~ 0x80
+	lastblock_byte_table[lastlen+1] = bit32.bxor(lastblock_byte_table[lastlen+1], 0x01)
+	lastblock_byte_table[48] = bit32.bxor(lastblock_byte_table[48], 0x80)
 	-- build back lastblock as a string
 	local lastblock_char_table = {}
 	for i = 1, 48 do
@@ -204,7 +219,7 @@ local function decrypt_lastblock(s, out_table, last)
 	local t = {}
 	for i = 1, 12 do
 		local c = sunpack("<I4", lastblock, 1 + (i-1)*4)
-		local x = spack("<I4", s[i] ~ c)
+		local x = spack("<I4", bit32.bxor(s[i], c))
 		insert(t, x)
 		s[i] = c
 	end
@@ -230,17 +245,25 @@ local function init(k, n)
 	local k1, k2, k3, k4 = sunpack("<I4I4I4I4", k)
 	s[5], s[6], s[7], s[8] =  k1, k2, k3, k4
 	--
-	s[13] = s[13] ~ 32  --W
-	s[14] = s[14] ~ 4   --L
-	s[15] = s[15] ~ 1   --P
-	s[16] = s[16] ~ 128 --T
+	--s[13] = s[13] ~ 64  --W
+	--s[14] = s[14] ~ 4   --L
+	--s[15] = s[15] ~ 1   --P
+	--s[16] = s[16] ~ 128 --T
+	s[13] = bit32.bxor(s[13], 64)
+	s[14] = bit32.bxor(s[14], 4)
+	s[15] = bit32.bxor(s[15], 1)
+	s[16] = bit32.bxor(s[16], 128)
 	--
 	permute(s)
 	--
-	s[13] = s[13] ~ k1
-	s[14] = s[14] ~ k2
-	s[15] = s[15] ~ k3
-	s[16] = s[16] ~ k4
+	--s[13] = s[13] ~ k1
+	--s[14] = s[14] ~ k2
+	--s[15] = s[15] ~ k3
+	--s[16] = s[16] ~ k4
+	s[13] = bit32.bxor(s[13], k1)
+	s[14] = bit32.bxor(s[14], k2)
+	s[15] = bit32.bxor(s[15], k3)
+	s[16] = bit32.bxor(s[16], k4)
 	--
 	return s
 end--init()
@@ -277,8 +300,8 @@ local function decrypt_data(s, out_table, ins)
 	if inlen > 0 then
 		while inlen >= 48 do
 			decrypt_block(s, out_table, ins, i)
-			inlen = inlen - 48
-			i = i + 48
+			inlen -= 48
+			i += 48
 		end
 		decrypt_lastblock(s, out_table, ins:sub(i))
 	end
@@ -287,22 +310,31 @@ end
 local function finalize(s, k)
 	-- return the authentication tag (16-byte string)
 	--
-	s[16] = s[16] ~ FINAL_TAG
+	--s[16] = s[16] ~ FINAL_TAG
+	s[16] = bit32.bxor(s[16], FINAL_TAG)
 	permute(s)
 	--
 	local k1, k2, k3, k4 = sunpack("<I4I4I4I4", k)
 	--
-	s[13] = s[13] ~ k1
-	s[14] = s[14] ~ k2
-	s[15] = s[15] ~ k3
-	s[16] = s[16] ~ k4
+	--s[13] = s[13] ~ k1
+	--s[14] = s[14] ~ k2
+	--s[15] = s[15] ~ k3
+	--s[16] = s[16] ~ k4
+	s[13] = bit32.bxor(s[13], k1)
+	s[14] = bit32.bxor(s[14], k2)
+	s[15] = bit32.bxor(s[15], k3)
+	s[16] = bit32.bxor(s[16], k4)
 	--
 	permute(s)
 	--
-	s[13] = s[13] ~ k1
-	s[14] = s[14] ~ k2
-	s[15] = s[15] ~ k3
-	s[16] = s[16] ~ k4
+	--s[13] = s[13] ~ k1
+	--s[14] = s[14] ~ k2
+	--s[15] = s[15] ~ k3
+	--s[16] = s[16] ~ k4
+	s[13] = bit32.bxor(s[13], k1)
+	s[14] = bit32.bxor(s[14], k2)
+	s[15] = bit32.bxor(s[15], k3)
+	s[16] = bit32.bxor(s[16], k4)
 	--
 	local authtag = spack("<I4I4I4I4", s[13], s[14], s[15], s[16])
 	return authtag

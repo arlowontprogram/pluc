@@ -18,16 +18,18 @@ local function adler32(s)
 	local s1, s2 = 1, 0
 	-- limit s size to ensure that modulo prime can be done only at end
 	-- 2^40 bytes should be enough for pure Lua with 64-bit integers...
-	if #s > (1 << 40) then error("adler32: string too large") end
+	--if #s > (1 << 40) then error("adler32: string too large") end
+	if #s > bit32.lshift(1, 40) then error("adler32: string too large") end
 	for i = 1,#s do
 		local b = byte(s, i)
-		s1 = s1 + b
-		s2 = s2 + s1
+		s1 += b
+		s2 += s1
 		-- no need to test or compute mod prime every turn.
 	end
 	s1 = s1 % prime
 	s2 = s2 % prime
-	return (s2 << 16) + s1
+	--return (s2 << 16) + s1
+	return bit32.lshift(s2, 16) + s1
 end --adler32()
 
 local function crc32_nt(s)
@@ -39,13 +41,20 @@ local function crc32_nt(s)
 	crc = 0xffffffff
 	for i = 1, #s do
 		b = byte(s, i)
-		crc = crc ~ b
+		--crc = crc ~ b
+		crc = bit32.bxor(crc, b)
 		for _ = 1, 8 do --eight times
-			mask = -(crc & 1)
-			crc = (crc >> 1) ~ (0xedb88320 & mask)
+			--mask = -(crc & 1)
+			mask = -bit32.band(crc, 1)
+			--crc = (crc >> 1) ~ (0xedb88320 & mask)
+			crc = bit32.bxor(
+				bit32.rshift(crc, 1),
+				bit32.band(0xedb88320, mask)
+			)
 		end
 	end--for
-	return (~crc) & 0xffffffff
+	--return (~crc) & 0xffffffff
+	return bit32.band(bit32.bxor(crc), 0xffffffff)
 end --crc32_nt()
 
 local function crc32(s, lt)
@@ -58,19 +67,36 @@ local function crc32(s, lt)
 		for i = 1, 256 do
 			crc = i - 1
 			for _ = 1, 8 do --eight times
-				mask = -(crc & 1)
-				crc = (crc >> 1) ~ (0xedb88320 & mask)
+				--mask = -(crc & 1)
+				mask = -bit32.band(crc, 1)
+				--crc = (crc >> 1) ~ (0xedb88320 & mask)
+			crc = bit32.bxor(
+				bit32.rshift(crc, 1),
+				bit32.band(0xedb88320, mask)
+			)
 			end
 			lt[i] = crc
 		end--for
 	end--if
+
 	-- compute the crc
 	crc = 0xffffffff
 	for i = 1, #s do
 		b = byte(s, i)
-		crc = (crc >> 8) ~ lt[((crc ~ b) & 0xFF) + 1]
+		--crc = (crc >> 8) ~ lt[
+		--	((crc ~ b) & 0xFF) 
+		--	+ 1
+		--]
+		crc = bit32.bxor(
+			bit32.rshift(crc, 8),
+			lit[
+				bit32.band(bit32.bxor(crc, b), 0xFF) + 1
+			]
+		)
 	end
-	return (~crc) & 0xffffffff
+
+	--return (~crc) & 0xffffffff
+	return bit32.band(bit32.bxor(crc), 0xffffffff)
 end --crc32()
 
 
@@ -79,4 +105,4 @@ return  {
 	adler32 = adler32,
 	crc32_nt = crc32_nt,
 	crc32 = crc32,
-	}
+}

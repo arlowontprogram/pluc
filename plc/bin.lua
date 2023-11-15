@@ -75,12 +75,28 @@ end -- hextos
 
 local function rotr32(i, n)
 	-- rotate right on 32 bits
-	return ((i >> n) | (i << (32 - n))) & 0xffffffff
+	--return (
+	--	(i >> n) | (i << (32 - n))
+	--) & 0xffffffff
+	return bit32.band(
+		bit32.bor(
+			bit32.rshift(i, n),
+			bit32.lshift(i, (32 - n))
+		),
+		0xffffffff
+	)
 end
 
 local function rotl32(i, n)
 	-- rotate left on 32 bits
-	return ((i << n) | (i >> (32 - n))) & 0xffffffff
+	--return ((i << n) | (i >> (32 - n))) & 0xffffffff
+	return bit32.band(
+		bit32.bor(
+			bit32.lshift(i, n),
+			bit32.rshift(i, (32 - n))
+		),
+		0xffffffff
+	)
 end
 
 
@@ -94,7 +110,13 @@ local function xor1(key, plain)
 	local ot = {}
 	local ki, kln = 1, #key
 	for i = 1, #plain do
-		ot[#ot + 1] = char(byte(plain, i) ~ byte(key, ki))
+		--ot[#ot + 1] = char(byte(plain, i) ~ byte(key, ki))
+		ot[#ot + 1] = char(
+			bit32.bxor(
+				byte(plain, i),
+				byte(key, ki)
+			)
+		)
 		ki = ki + 1
 		if ki > kln then ki = 1 end
 	end

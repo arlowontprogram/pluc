@@ -57,14 +57,25 @@ local FINAL_TAG   = 0x08
 -- local BRANCH_TAG  = 0x10
 -- local MERGE_TAG   = 0x20
 
--- local function ROTR64(x, n) -- INLINED in G()
---     return (x >> n) | (x << (64-n))
--- end
+local function ROTR64(x, n) -- INLINED in G()
+    --return (x >> n) | (x << (64-n))
+	return bit32.bor(
+		bit32.rshift(x, n),
+		bit32.lshift(x, 64-n)
+	)
+end
 
--- local function H(a, b)  -- INLINED in G()
--- 	--  The nonlinear primitive.  a, b: u64
--- 	return (a ~ b) ~ ((a & b) << 1)
--- end
+local function H(a, b)  -- INLINED in G()
+	--  The nonlinear primitive.  a, b: u64
+	--return (a ~ b) ~ ((a & b) << 1)
+	return bit32.bxor(
+		bit32.bxor(a, b),
+		bit32.lshift(
+			bit32.band(a, b),
+			1
+		)
+	)
+end
 
 local function G(s, a, b, c, d)
 	-- The quarter-round.
@@ -74,14 +85,14 @@ local function G(s, a, b, c, d)
 	-- H(): return (a ~ b) ~ ((a & b) << 1) -- INLINED
 	-- ROTR64(): return (x >> n) | (x << (64-n)) --INLINED
 	--
-	A = (A ~ B) ~ ((A & B) << 1)  -- H(A, B);
-	D = D ~ A; D = (D >> 8) | (D << (56)) --ROTR64(D, 8) --R0
-	C = (C ~ D) ~ ((C & D) << 1)  -- H(C, D);
-	B = B ~ C; B = (B >> 19) | (B << (45)) --ROTR64(B, 19) --R1
-	A = (A ~ B) ~ ((A & B) << 1)  -- H(A, B);
-	D = D ~ A; D = (D >> 40) | (D << (24)) --ROTR64(D, 40) --R2
-	C = (C ~ D) ~ ((C & D) << 1)  -- H(C, D);
-	B = B ~ C; B = (B >> 63) | (B << (1)) --ROTR64(B, 63) --R3
+	A = H(A, B)
+	D = ROTR64(D, 8) --R0
+	C = H(C, D);
+	B = ROTR64(B, 19) --R1
+	A = H(A, B);
+	D = ROTR64(D, 40) --R2
+	C = H(C, D);
+	B = ROTR64(B, 63) --R3
 	s[a], s[b], s[c], s[d] = A, B, C, D
 end
 
@@ -120,7 +131,8 @@ end
 local function absorb_block(s, ins, ini, tag)
 	-- the input string is the substring of 'ins' starting at position 'ini'
 	-- (we cannot use a char* as in C!)
-	s[16] = s[16] ~ tag
+	--s[16] = s[16] ~ tag
+	s[16] = bit32.bxor(s[16], tag)
 	permute(s)
 	for i = 1, 12 do
 		s[i] = s[i] ~ sunpack("<I8", ins, ini + (i-1)*8)
@@ -134,7 +146,8 @@ end
 local function encrypt_block(s, out_table, ins, ini)
 	-- encrypt block in 'ins' at offset 'ini'
 	-- append encrypted chunks at the end of out_table
-	s[16] = s[16] ~ PAYLOAD_TAG
+	--s[16] = s[16] ~ PAYLOAD_TAG
+	s[16] = bit32.bxor(s[16], PAYLOAD_TAG)
 	permute(s)
 	for i = 1, 12 do
 		s[i] = s[i] ~ sunpack("<I8", ins, ini + (i-1)*8)
@@ -157,11 +170,12 @@ end
 local function decrypt_block(s, out_table, ins, ini)
 	-- decrypt block in 'ins' at offset 'ini'
 	-- append decrypted chunks at the end of out_table
-	s[16] = s[16] ~ PAYLOAD_TAG
+	--s[16] = s[16] ~ PAYLOAD_TAG
+	s[16] = bit32.bxor(s[16], PAYLOAD_TAG)
 	permute(s)
 	for i = 1, 12 do
 		local c = sunpack("<I8", ins, ini + (i-1)*8)
-		insert(out_table, spack("<I8", s[i] ~ c))
+		insert(out_table, spack("<I8", bit32.bxor(s[i], c)))
 		s[i] = c
 	end
 end
@@ -171,7 +185,8 @@ local function decrypt_lastblock(s, out_table, last)
 	-- append decrypted block at the end of out_table
 	--
 	local lastlen = #last
-	s[16] = s[16] ~ PAYLOAD_TAG
+	--s[16] = s[16] ~ PAYLOAD_TAG
+	s[16] = bit32.bxor(s[16], PAYLOAD_TAG)
 	permute(s)
 	--
 	-- Lua hack to perform the 'xor 0x01' and 'xor 0x80'...
@@ -193,8 +208,8 @@ local function decrypt_lastblock(s, out_table, last)
 		lastblock_byte_table[i] = byte(last, i)
 	end
 	-- perform the 'xor's
-	lastblock_byte_table[lastlen+1] = lastblock_byte_table[lastlen+1] ~ 0x01
-	lastblock_byte_table[96] = lastblock_byte_table[96] ~ 0x80
+	lastblock_byte_table[lastlen+1] = bit32.bxor(lastblock_byte_table[lastlen+1], 0x01)
+	lastblock_byte_table[96] = bit32.bxor(lastblock_byte_table[96], 0x80)
 	-- build back lastblock as a string
 	local lastblock_char_table = {}
 	for i = 1, 96 do
@@ -205,7 +220,7 @@ local function decrypt_lastblock(s, out_table, last)
 	local t = {}
 	for i = 1, 12 do
 		local c = sunpack("<I8", lastblock, 1 + (i-1)*8)
-		local x = spack("<I8", s[i] ~ c)
+		local x = spack("<I8", bit32.bxor(s[i], c))
 		insert(t, x)
 		s[i] = c
 	end
@@ -231,17 +246,25 @@ local function init(k, n)
 	local k1, k2, k3, k4 = sunpack("<I8I8I8I8", k)
 	s[5], s[6], s[7], s[8] =  k1, k2, k3, k4
 	--
-	s[13] = s[13] ~ 64  --W
-	s[14] = s[14] ~ 4   --L
-	s[15] = s[15] ~ 1   --P
-	s[16] = s[16] ~ 256 --T
+	--s[13] = s[13] ~ 64  --W
+	--s[14] = s[14] ~ 4   --L
+	--s[15] = s[15] ~ 1   --P
+	--s[16] = s[16] ~ 256 --T
+	s[13] = bit32.bxor(s[13], 64)
+	s[14] = bit32.bxor(s[14], 4)
+	s[15] = bit32.bxor(s[15], 1)
+	s[16] = bit32.bxor(s[16], 256)
 	--
 	permute(s)
 	--
-	s[13] = s[13] ~ k1
-	s[14] = s[14] ~ k2
-	s[15] = s[15] ~ k3
-	s[16] = s[16] ~ k4
+	--s[13] = s[13] ~ k1
+	--s[14] = s[14] ~ k2
+	--s[15] = s[15] ~ k3
+	--s[16] = s[16] ~ k4
+	s[13] = bit32.bxor(s[13], k1)
+	s[14] = bit32.bxor(s[14], k2)
+	s[15] = bit32.bxor(s[15], k3)
+	s[16] = bit32.bxor(s[16], k4)
 	--
 	return s
 end--init()
@@ -252,8 +275,8 @@ local function absorb_data(s, ins, tag)
 	if inlen > 0 then
 		while inlen >= 96 do
 			absorb_block(s, ins, i, tag)
-			inlen = inlen - 96
-			i = i + 96
+			inlen -= 96
+			i += 96
 		end
 		absorb_lastblock(s, ins:sub(i), tag)
 	end--if
@@ -265,8 +288,8 @@ local function encrypt_data(s, out_table, ins)
 	if inlen > 0 then
 		while inlen >= 96 do
 			encrypt_block(s, out_table, ins, i)
-			inlen = inlen - 96
-			i = i + 96
+			inlen -= 96
+			i += 96
 		end
 		encrypt_lastblock(s, out_table, ins:sub(i))
 	end
@@ -278,8 +301,8 @@ local function decrypt_data(s, out_table, ins)
 	if inlen > 0 then
 		while inlen >= 96 do
 			decrypt_block(s, out_table, ins, i)
-			inlen = inlen - 96
-			i = i + 96
+			inlen -= 96
+			i += 96
 		end
 		decrypt_lastblock(s, out_table, ins:sub(i))
 	end
@@ -288,22 +311,31 @@ end
 local function finalize(s, k)
 	-- return the authentication tag (32-byte string)
 	--
-	s[16] = s[16] ~ FINAL_TAG
+	--s[16] = s[16] ~ FINAL_TAG
+	s[16] = bit32.bxor(s[16], FINAL_TAG)
 	permute(s)
 	--
 	local k1, k2, k3, k4 = sunpack("<I8I8I8I8", k)
 	--
-	s[13] = s[13] ~ k1
-	s[14] = s[14] ~ k2
-	s[15] = s[15] ~ k3
-	s[16] = s[16] ~ k4
+	--s[13] = s[13] ~ k1
+	--s[14] = s[14] ~ k2
+	--s[15] = s[15] ~ k3
+	--s[16] = s[16] ~ k4
+	s[13] = bit32.bxor(s[13], k1)
+	s[14] = bit32.bxor(s[14], k2)
+	s[15] = bit32.bxor(s[15], k3)
+	s[16] = bit32.bxor(s[16], k4)
 	--
 	permute(s)
 	--
-	s[13] = s[13] ~ k1
-	s[14] = s[14] ~ k2
-	s[15] = s[15] ~ k3
-	s[16] = s[16] ~ k4
+	--s[13] = s[13] ~ k1
+	--s[14] = s[14] ~ k2
+	--s[15] = s[15] ~ k3
+	--s[16] = s[16] ~ k4
+	s[13] = bit32.bxor(s[13], k1)
+	s[14] = bit32.bxor(s[14], k2)
+	s[15] = bit32.bxor(s[15], k3)
+	s[16] = bit32.bxor(s[16], k4)
 	--
 	local authtag = spack("<I8I8I8I8", s[13], s[14], s[15], s[16])
 	return authtag
